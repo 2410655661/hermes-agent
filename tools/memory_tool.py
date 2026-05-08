@@ -40,10 +40,14 @@ logger = logging.getLogger(__name__)
 # (HERMES_HOME env var changes) are always respected.  The old module-level
 # constant was cached at import time and could go stale if a profile switch
 # happened after the first import.
+
+# / 对应的魔术方法 __truediv__
+#  pathlib库的Path重写了 __truediv__ 方法，所以这里 / 变成了路径拼接
 def get_memory_dir() -> Path:
     """Return the profile-scoped memories directory."""
     return get_hermes_home() / "memories"
 
+# MEMORY.md 和 USER.md 使用 § 分割
 ENTRY_DELIMITER = "\n§\n"
 
 
@@ -51,7 +55,7 @@ ENTRY_DELIMITER = "\n§\n"
 # Memory content scanning — lightweight check for injection/exfiltration
 # in content that gets injected into the system prompt.
 # ---------------------------------------------------------------------------
-
+# memory 写入安全检查，防止讲危险内容写入
 _MEMORY_THREAT_PATTERNS = [
     # Prompt injection
     (r'ignore\s+(previous|all|above|prior)\s+instructions', "prompt_injection"),
@@ -103,6 +107,7 @@ class MemoryStore:
         Tool responses always reflect this live state.
     """
 
+    # MEMEORY.md 限制2200个字符，USER.md 限制1375个字符
     def __init__(self, memory_char_limit: int = 2200, user_char_limit: int = 1375):
         self.memory_entries: List[str] = []
         self.user_entries: List[str] = []
@@ -111,6 +116,8 @@ class MemoryStore:
         # Frozen snapshot for system prompt -- set once at load_from_disk()
         self._system_prompt_snapshot: Dict[str, str] = {"memory": "", "user": ""}
 
+    # 共享提示词前缀缓存？
+    # 从磁盘中加载 MEMORY.md 和 USER.md
     def load_from_disk(self):
         """Load entries from MEMORY.md and USER.md, capture system prompt snapshot."""
         mem_dir = get_memory_dir()
@@ -216,8 +223,11 @@ class MemoryStore:
             new_entries = entries + [content]
             new_total = len(ENTRY_DELIMITER.join(new_entries))
 
+            # 记忆超出上限，将所有条目返回给模型，让模型自己决定哪些可以删除，哪些可以合并压缩
+            # 模型不是被动的执行淘汰规则，而是主动做信息整理
             if new_total > limit:
                 current = self._char_count(target)
+                # {current:,} 表示把数字 current 按 千位分隔符 格式化
                 return {
                     "success": False,
                     "error": (

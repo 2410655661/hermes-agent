@@ -1133,6 +1133,8 @@ class AIAgent:
         self._memory_store = None
         self._memory_enabled = False
         self._user_profile_enabled = False
+        # 会话N轮触发 Nudge Engine
+        # 如果 _memory_nudge_interval 配置 0 的话，永远不会触发 Nudge Engine
         self._memory_nudge_interval = 10
         self._memory_flush_min_turns = 6
         self._turns_since_memory = 0
@@ -2264,6 +2266,8 @@ class AIAgent:
                     except Exception:
                         pass
 
+        # 开启后台线程执行，主线程不会等待，不阻塞对话响应
+        # daemon: True，主线程退出时，会被强制结束
         t = threading.Thread(target=_run_review, daemon=True, name="bg-review")
         t.start()
 
@@ -7862,6 +7866,12 @@ class AIAgent:
         # Track memory nudge trigger (turn-based, checked here).
         # Skill trigger is checked AFTER the agent loop completes, based on
         # how many tool iterations THIS turn used.
+
+        # 判断是否需要触发 Nudge Engine
+        # 触发条件：
+        # - memory tool 可用
+        # - memory store 初始化完成
+        # - _memory_nudge_interval 达到 turn 阈值
         _should_review_memory = False
         if (self._memory_nudge_interval > 0
                 and "memory" in self.valid_tool_names
